@@ -9,6 +9,7 @@ sig
   val toConcr: omegaReg -> concr
   val toString: omegaReg -> string
   val output: omegaReg -> unit
+  val emptySet: omegaReg
   val omegaIter: Reg.reg -> omegaReg
   val concat: Reg.reg * omegaReg -> omegaReg
   val union: omegaReg * omegaReg -> omegaReg
@@ -16,7 +17,8 @@ sig
   val isConcat: omegaReg -> bool
   val isUnion: omegaReg -> bool
   val genUnion: omegaReg list -> omegaReg
-  val finUnionFormPairs: omegaReg -> (Reg.reg * Reg.reg) list
-  val finUnionForm: omegaReg -> omegaReg
+  val toFinUnionPairs: omegaReg -> (Reg.reg * Reg.reg) list
+  val fromFinUnionPairs: (Reg.reg * Reg.reg) list -> omegaReg
+  val toFinUnionForm: omegaReg -> omegaReg
   val mapSubReg: (Reg.reg -> Reg.reg) -> omegaReg -> omegaReg
 end

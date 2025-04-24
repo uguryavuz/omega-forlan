@@ -300,4 +300,54 @@ struct
       end
     end
 
+  fun omegaIter (nfa: NFA.nfa) : nba =
+    let
+      fun renam a =
+        Sym.fromTop (Sym.Compound [SOME a])
+      val rel = SymRel.mlFunctionToFunction (renam, NFA.states nfa)
+      val nfa = NFA.renameStates (nfa, rel)
+      val nfa_states = NFA.states nfa
+      val nfa_start = NFA.startState nfa
+      val nfa_accepts = NFA.acceptingStates nfa
+      val nfa_trans = NFA.transitions nfa
+      val start' = Sym.fromString "A"
+    in
+      let
+        val filtTrans =
+          Set.filter (fn (q, _, _) => Sym.equal (q, nfa_start)) nfa_trans
+        val trans' = TranSet.union
+          (nfa_trans, TranSet.map (fn (q, x, r) => (start', x, r)) filtTrans)
+        val filtTrans' =
+          Set.filter (fn (_, _, r) => SymSet.memb (r, nfa_accepts)) trans'
+        val trans'' = TranSet.union
+          (trans', TranSet.map (fn (q, x, r) => (q, x, start')) filtTrans')
+      in
+        fromConcr
+          { states = SymSet.union (Set.sing start', nfa_states)
+          , starts = Set.sing start'
+          , accepts = Set.sing start'
+          , trans = trans''
+          }
+      end
+    end
+
+  fun fromOmegaReg (or: OmegaReg.omegaReg) : nba =
+    case (OmegaReg.toConcr or) of
+      OmegaReg.OmegaIter r =>
+        omegaIter ((NFA.fromEFA o EFA.fromFA o FA.fromReg) r)
+    | OmegaReg.Concat (r, or') =>
+        let
+          val nfa = (NFA.fromEFA o EFA.fromFA o FA.fromReg) r
+          val nba = fromOmegaReg (OmegaReg.fromConcr or')
+        in
+          concat (nfa, nba)
+        end
+    | OmegaReg.Union (or1, or2) =>
+        let
+          val nba1 = fromOmegaReg (OmegaReg.fromConcr or1)
+          val nba2 = fromOmegaReg (OmegaReg.fromConcr or2)
+        in
+          union (nba1, nba2)
+        end
+
 end

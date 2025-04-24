@@ -25,4 +25,6 @@ sig
   val renameStatesCanonically: nba -> nba
   val union: nba * nba -> nba
   val concat: NFA.nfa * nba -> nba
+  val omegaIter: NFA.nfa -> nba
+  val fromOmegaReg: OmegaReg.omegaReg -> nba
 end

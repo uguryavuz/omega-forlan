@@ -2,7 +2,7 @@ structure OmegaReg :> OMEGA_REG =
 struct
 
   (******************************** Main Types *********************************)
-  
+
   datatype concr =
     OmegaIter of Reg.reg
   | Concat of Reg.reg * concr
@@ -28,7 +28,7 @@ struct
 
 
   (*********************************** Output **********************************)
-  
+
   fun toString (OmegaIter r) =
         "[" ^ Reg.toString r ^ "]@"
     | toString (Concat (r, or)) =
@@ -41,6 +41,8 @@ struct
 
   (****************************** Other Functions ******************************)
 
+  val emptySet = OmegaIter (Reg.emptySet)
+
   fun omegaIter (r: Reg.reg) : omegaReg =
     if Reg.hasEmp r then
       raise Fail "OmegaIter argument must not accept the empty string"
@@ -51,7 +53,8 @@ struct
 
   fun union (or1: omegaReg, or2: omegaReg) : omegaReg = Union (or1, or2)
 
-  fun isOmegaIter (OmegaIter _) = true
+  fun isOmegaIter (OmegaIter r) =
+        (check (OmegaIter r); true)
     | isOmegaIter _ = false
 
   fun isConcat (Concat _) = true
@@ -60,24 +63,29 @@ struct
   fun isUnion (Union _) = true
     | isUnion _ = false
 
-  fun genUnion nil =
-        raise Fail "genUnion for omega-regexps should not be called with nil"
+  fun genUnion nil = emptySet
     | genUnion [or] = or
     | genUnion (or :: ors) =
-        Union (or, genUnion ors)
+        if (List.null ors) then or else union (or, genUnion ors)
 
-  fun finUnionFormPairs (OmegaIter r) = [(Reg.emptyStr, r)]
-    | finUnionFormPairs (Union (or1, or2)) =
-        finUnionFormPairs or1 @ finUnionFormPairs or2
-    | finUnionFormPairs (Concat (r, or)) =
-        map (fn (r1, r2) => (Reg.concat (r, r1), r2)) (finUnionFormPairs or)
+  fun toFinUnionPairs (OmegaIter r) =
+        (check (OmegaIter r); [(Reg.emptyStr, r)])
+    | toFinUnionPairs (Union (or1, or2)) =
+        toFinUnionPairs or1 @ toFinUnionPairs or2
+    | toFinUnionPairs (Concat (r, or)) =
+        map
+          (fn (r1, r2) =>
+             (if (Reg.isEmptyStr r1) then (r, r2) else (Reg.concat (r, r1), r2)))
+          (toFinUnionPairs or)
 
-  fun finUnionForm or =
-    genUnion
-      (map (fn (r1, r2) => Concat (r1, OmegaIter r2)) (finUnionFormPairs or))
+  fun fromFinUnionPairs pairs =
+    genUnion (map (fn (r1, r2) => concat (r1, omegaIter r2)) pairs)
+
+  fun toFinUnionForm or =
+    fromFinUnionPairs (toFinUnionPairs or)
 
   fun mapSubReg (f: Reg.reg -> Reg.reg) : omegaReg -> omegaReg =
-    fn OmegaIter r => OmegaIter (f r)
+    fn OmegaIter r => (check (OmegaIter r); OmegaIter (f r))
      | Concat (r, or') => Concat (f r, mapSubReg f or')
      | Union (or1, or2) => Union (mapSubReg f or1, mapSubReg f or2)
 
