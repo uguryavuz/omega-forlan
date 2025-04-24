@@ -1,0 +1,8 @@
+# SML/NJ stuff
+**/.cm/
+
+# macOS finder
+.DS_Store
+
+# VSCode
+.vscode/

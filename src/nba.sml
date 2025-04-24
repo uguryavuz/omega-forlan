@@ -4,6 +4,7 @@ struct
   structure L = Lex
 
   (******************************** Main Types *********************************)
+
   type concr =
     { states: Sym.sym Set.set
     , starts: Sym.sym Set.set
@@ -116,7 +117,6 @@ struct
         {states = states, starts = starts, accepts = accepts, trans = trans}
     end
 
-
   (*********************************** Input ***********************************)
 
   fun inpNBA lts =
@@ -165,19 +165,139 @@ struct
   fun output ("", fa) =
         (print (toString fa); print PP.newline)
     | output (fil, fa) =
-        case SOME (TextIO.openOut fil) handle _ => NONE of
-          NONE =>
-            M.errorPP (fn () =>
-              [ PP.fromString "unable"
-              , PP.fromString "to"
-              , PP.fromString "open"
-              , PP.fromString "file:"
-              , PP.quote (PP.fromStringSplitEscape fil)
-              ])
-        | SOME stm =>
-            ( TextIO.output (stm, toString fa)
-            ; TextIO.output (stm, PP.newline)
-            ; TextIO.closeOut stm
-            )
+        let
+          val opt = (SOME (TextIO.openOut fil) handle _ => NONE)
+        in
+          case opt of
+            NONE =>
+              M.errorPP (fn () =>
+                [ PP.fromString "unable"
+                , PP.fromString "to"
+                , PP.fromString "open"
+                , PP.fromString "file:"
+                , PP.quote (PP.fromStringSplitEscape fil)
+                ])
+          | SOME stm =>
+              ( TextIO.output (stm, toString fa)
+              ; TextIO.output (stm, PP.newline)
+              ; TextIO.closeOut stm
+              )
+        end
+
+  (****************************** Other Functions *****************************)
+
+  fun states (nba: nba) = #states nba
+
+  fun startStates (nba: nba) = #starts nba
+
+  fun acceptingStates (nba: nba) = #accepts nba
+
+  fun transitions (nba: nba) = #trans nba
+
+  fun renameStates (nba: nba, rel: SymRel.sym_rel) =
+    let
+      val states = #states nba
+      val _ =
+        if not (SymRel.bijectionFromAvoiding (rel, states, Set.empty)) then
+          M.errorString (fn () =>
+            ["invalid", "states", "renaming", "for", "NBA"])
+        else
+          ()
+      val starts = #starts nba
+      val accepts = #accepts nba
+      val trans = #trans nba
+    in
+      let
+        val renam = SymRel.applyFunction rel
+        val states' = SymSet.map renam states
+        val starts' = SymSet.map renam starts
+        val accepts' = SymSet.map renam accepts
+        val trans' = TranSet.map (fn (q, x, r) => (renam q, x, renam r)) trans
+      in
+        fromConcr
+          { states = states'
+          , starts = starts'
+          , accepts = accepts'
+          , trans = trans'
+          }
+      end
+    end
+
+  fun renameStatesCanonically (nba: nba) =
+    let
+      val states = #states nba
+      fun pos q =
+        valOf (Set.position (fn p => Sym.equal (p, q)) states)
+      val renam =
+        if (Set.size states <= 26) then
+          fn q => Sym.fromString (str (chr (ord #"A" + pos q - 1)))
+        else
+          fn q =>
+            Sym.fromString (String.concat ["<", Int.toString (pos q), ">"])
+      val rel = SymRel.mlFunctionToFunction (renam, states)
+    in
+      renameStates (nba, rel)
+    end
+
+  fun union (nba1: nba, nba2: nba) =
+    let
+      fun renam1 a =
+        Sym.fromTop (Sym.Compound [SOME (Sym.fromString "1"), NONE, SOME a])
+      fun renam2 a =
+        Sym.fromTop (Sym.Compound [SOME (Sym.fromString "2"), NONE, SOME a])
+      val rel1 = SymRel.mlFunctionToFunction (renam1, #states nba1)
+      val rel2 = SymRel.mlFunctionToFunction (renam2, #states nba2)
+      val nba1' = renameStates (nba1, rel1)
+      val nba2' = renameStates (nba2, rel2)
+    in
+      fromConcr
+        { states = SymSet.union (#states nba1', #states nba2')
+        , starts = SymSet.union (#starts nba1', #starts nba2')
+        , accepts = SymSet.union (#accepts nba1', #accepts nba2')
+        , trans = TranSet.union (#trans nba1', #trans nba2')
+        }
+    end
+
+  fun concat (nfa: NFA.nfa, nba: nba) =
+    let
+      fun renam1 a =
+        Sym.fromTop (Sym.Compound [SOME (Sym.fromString "1"), NONE, SOME a])
+      fun renam2 a =
+        Sym.fromTop (Sym.Compound [SOME (Sym.fromString "2"), NONE, SOME a])
+      val rel1 = SymRel.mlFunctionToFunction (renam1, NFA.states nfa)
+      val rel2 = SymRel.mlFunctionToFunction (renam2, #states nba)
+      val nfa' = NFA.renameStates (nfa, rel1)
+      val nfa'_states = NFA.states nfa'
+      val nfa'_start = NFA.startState nfa'
+      val nfa'_accepts = NFA.acceptingStates nfa'
+      val nfa'_trans = NFA.transitions nfa'
+      val nba' = renameStates (nba, rel2)
+      val nba'_states = #states nba'
+      val nba'_starts = #starts nba'
+      val nba'_accepts = #accepts nba'
+      val nba'_trans = #trans nba'
+    in
+      let
+        val starts =
+          if not (SymSet.memb (nfa'_start, nfa'_accepts)) then
+            Set.sing nfa'_start
+          else
+            SymSet.union (Set.sing nfa'_start, nba'_starts)
+        val filtTrans =
+          Set.filter (fn (_, _, r) => SymSet.memb (r, nfa'_accepts)) nfa'_trans
+        val updTrans = TranSet.fromList
+          (List.concatMap
+             (fn (q, x, _) =>
+                List.map (fn s => (q, x, s)) (Set.toList nba'_starts))
+             (Set.toList filtTrans))
+      in
+        fromConcr
+          { states = SymSet.union (nfa'_states, nba'_states)
+          , starts = starts
+          , accepts = nba'_accepts
+          , trans = TranSet.genUnion [nfa'_trans, nba'_trans, updTrans]
+          }
+      end
+    end
 
 end

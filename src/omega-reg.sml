@@ -1,6 +1,8 @@
 structure OmegaReg :> OMEGA_REG =
 struct
+
   (******************************** Main Types *********************************)
+  
   datatype concr =
     OmegaIter of Reg.reg
   | Concat of Reg.reg * concr
@@ -26,6 +28,7 @@ struct
 
 
   (*********************************** Output **********************************)
+  
   fun toString (OmegaIter r) =
         "[" ^ Reg.toString r ^ "]@"
     | toString (Concat (r, or)) =
@@ -37,6 +40,7 @@ struct
     (print (toString or); print PP.newline)
 
   (****************************** Other Functions ******************************)
+
   fun omegaIter (r: Reg.reg) : omegaReg =
     if Reg.hasEmp r then
       raise Fail "OmegaIter argument must not accept the empty string"
