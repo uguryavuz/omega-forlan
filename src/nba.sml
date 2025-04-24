@@ -1,5 +1,3 @@
-use "nba.sig";
-
 structure NBA :> NBA =
 struct
   structure M = Messages

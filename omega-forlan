@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Source files
+FILES=(
+  "src/omega-reg.sig"
+  "src/omega-reg.sml"
+  "src/nba.sig"
+  "src/nba.sml"
+)
+
+# Temporary FIFO
+FIFO=$(mktemp -u)
+mkfifo "$FIFO"
+
+# Feed use commands into FIFO, then attach terminal input
+{
+  for file in "${FILES[@]}"; do
+    echo "use \"$file\";"
+  done
+  # keep REPL open by passing control to keyboard
+  cat /dev/tty
+} > "$FIFO" &
+
+# Start Forlan REPL reading from FIFO
+forlan < "$FIFO"
+
+# Clean up
+rm "$FIFO"

@@ -1,5 +1,3 @@
-use "omega-reg.sig";
-
 structure OmegaReg :> OMEGA_REG =
 struct
   (******************************** Main Types *********************************)
