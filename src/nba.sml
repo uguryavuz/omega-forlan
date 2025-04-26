@@ -363,7 +363,7 @@ struct
           union (nba1, nba2)
         end
 
-  fun toOmegaReg (nba: nba) : OmegaReg.omegaReg =
+  fun toStartAccRegPairs (nba: nba) : (Reg.reg * Reg.reg) list =
     let
       val states = #states nba
       val starts = #starts nba
@@ -375,45 +375,62 @@ struct
           , accepting = Set.sing s'
           , trans = #trans nba
           }
+      fun statePairReg (s, s') =
+        faToReg Reg.weaklySimplify (statePairFA (s, s'))
       fun statePairFASE (s, s') =
-        let
-          fun renam a =
-            Sym.fromTop (Sym.Compound [SOME a])
-          val rel = SymRel.mlFunctionToFunction (renam, states)
-          val fa = FA.renameStates (statePairFA (s, s'), rel)
-          val fa_states = FA.states fa
-          val fa_start = FA.startState fa
-          val fa_trans = FA.transitions fa
-          val start' = Sym.fromString "A"
-        in
+        if not (Sym.equal (s, s')) then
+          statePairFA (s, s')
+        else
           let
-            val filtTrans =
-              Set.filter (fn (q, _, _) => Sym.equal (q, fa_start)) fa_trans
-            val trans' = TranSet.union
-              (fa_trans, TranSet.map (fn (q, x, r) => (start', x, r)) filtTrans)
+            fun renam a =
+              Sym.fromTop (Sym.Compound [SOME a])
+            val rel = SymRel.mlFunctionToFunction (renam, states)
+            val fa = FA.renameStates (statePairFA (s, s'), rel)
+            val fa_states = FA.states fa
+            val fa_start = FA.startState fa
+            val fa_trans = FA.transitions fa
+            val start' = Sym.fromString "A"
           in
-            FA.fromConcr
-              { stats = SymSet.union (Set.sing start', fa_states)
-              , start = start'
-              , accepting = FA.acceptingStates fa
-              , trans = trans'
-              }
+            let
+              val filtTrans =
+                Set.filter (fn (q, _, _) => Sym.equal (q, fa_start)) fa_trans
+              val trans' = TranSet.union
+                ( fa_trans
+                , TranSet.map (fn (q, x, r) => (start', x, r)) filtTrans
+                )
+            in
+              FA.fromConcr
+                { stats = SymSet.union (Set.sing start', fa_states)
+                , start = start'
+                , accepting = FA.acceptingStates fa
+                , trans = trans'
+                }
+            end
           end
-        end
       fun statePairRegSE (s, s') =
         faToReg Reg.weaklySimplify (statePairFASE (s, s'))
       val startAccPairs = Set.toList (Set.times (starts, accepts))
-      val startAccRegPairs =
-        List.map
-          (fn (s, s') =>
-             let
-               val r1 = statePairRegSE (s, s')
-               val r2 = statePairRegSE (s', s')
-             in
-               (r1, r2)
-             end) startAccPairs
     in
-      OmegaReg.fromFinUnionPairs startAccRegPairs
+      List.map
+        (fn (s, s') =>
+           let
+             val r1 = statePairReg (s, s')
+             val r2 = statePairRegSE (s', s')
+           in
+             (r1, r2)
+           end) startAccPairs
     end
+
+  fun toOmegaReg (nba: nba) : OmegaReg.omegaReg =
+    OmegaReg.fromFinUnionPairs (toStartAccRegPairs nba)
+
+  fun isEmpty (nba: nba) : bool =
+    let
+      fun lassoPair (r1, r2) =
+        not (Reg.isEmptySet r1) andalso not (Reg.isEmptySet r2)
+    in
+      not (List.exists lassoPair (toStartAccRegPairs nba))
+    end
+
 
 end

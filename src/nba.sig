@@ -28,4 +28,5 @@ sig
   val omegaIter: NFA.nfa -> nba
   val fromOmegaReg: OmegaReg.omegaReg -> nba
   val toOmegaReg: nba -> OmegaReg.omegaReg
+  val isEmpty: nba -> bool
 end
