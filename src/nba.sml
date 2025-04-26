@@ -302,6 +302,19 @@ struct
 
   fun omegaIter (nfa: NFA.nfa) : nba =
     let
+      val _ =
+        if (NFA.accepted nfa (Str.fromString "%")) then
+          M.errorPP (fn () =>
+            [ PP.fromString "NFA"
+            , PP.fromString "must"
+            , PP.fromString "not"
+            , PP.fromString "accept"
+            , PP.fromString "the"
+            , PP.fromString "empty"
+            , PP.fromString "string"
+            ])
+        else
+          ()
       fun renam a =
         Sym.fromTop (Sym.Compound [SOME a])
       val rel = SymRel.mlFunctionToFunction (renam, NFA.states nfa)
@@ -349,5 +362,58 @@ struct
         in
           union (nba1, nba2)
         end
+
+  fun toOmegaReg (nba: nba) : OmegaReg.omegaReg =
+    let
+      val states = #states nba
+      val starts = #starts nba
+      val accepts = #accepts nba
+      fun statePairFA (s, s') =
+        FA.fromConcr
+          { stats = states
+          , start = s
+          , accepting = Set.sing s'
+          , trans = #trans nba
+          }
+      fun statePairFASE (s, s') =
+        let
+          fun renam a =
+            Sym.fromTop (Sym.Compound [SOME a])
+          val rel = SymRel.mlFunctionToFunction (renam, states)
+          val fa = FA.renameStates (statePairFA (s, s'), rel)
+          val fa_states = FA.states fa
+          val fa_start = FA.startState fa
+          val fa_trans = FA.transitions fa
+          val start' = Sym.fromString "A"
+        in
+          let
+            val filtTrans =
+              Set.filter (fn (q, _, _) => Sym.equal (q, fa_start)) fa_trans
+            val trans' = TranSet.union
+              (fa_trans, TranSet.map (fn (q, x, r) => (start', x, r)) filtTrans)
+          in
+            FA.fromConcr
+              { stats = SymSet.union (Set.sing start', fa_states)
+              , start = start'
+              , accepting = FA.acceptingStates fa
+              , trans = trans'
+              }
+          end
+        end
+      fun statePairRegSE (s, s') =
+        faToReg Reg.weaklySimplify (statePairFASE (s, s'))
+      val startAccPairs = Set.toList (Set.times (starts, accepts))
+      val startAccRegPairs =
+        List.map
+          (fn (s, s') =>
+             let
+               val r1 = statePairRegSE (s, s')
+               val r2 = statePairRegSE (s', s')
+             in
+               (r1, r2)
+             end) startAccPairs
+    in
+      OmegaReg.fromFinUnionPairs startAccRegPairs
+    end
 
 end

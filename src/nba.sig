@@ -27,4 +27,5 @@ sig
   val concat: NFA.nfa * nba -> nba
   val omegaIter: NFA.nfa -> nba
   val fromOmegaReg: OmegaReg.omegaReg -> nba
+  val toOmegaReg: nba -> OmegaReg.omegaReg
 end
