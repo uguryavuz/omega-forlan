@@ -21,6 +21,7 @@ sig
   val startStates: nba -> Sym.sym Set.set
   val acceptingStates: nba -> Sym.sym Set.set
   val transitions: nba -> Tran.tran Set.set
+  val alphabet: nba -> Sym.sym Set.set
   val renameStates: nba * SymRel.sym_rel -> nba
   val renameStatesCanonically: nba -> nba
   val union: nba * nba -> nba
@@ -29,4 +30,5 @@ sig
   val fromOmegaReg: OmegaReg.omegaReg -> nba
   val toOmegaReg: nba -> OmegaReg.omegaReg
   val isEmpty: nba -> bool
+  val complement: nba -> nba
 end
