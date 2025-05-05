@@ -440,222 +440,430 @@ struct
       not (List.exists lassoPair (toStartAccRegPairs nba))
     end
 
-fun complement (nba: nba) =
-  let
-    val states = #states nba
-    val starts = #starts nba
-    val accepts = #accepts nba
-    val trans = #trans nba
-    val statePowersetAsList : (Sym.sym Set.set) list =
-      let 
-        val elems = Set.toList states
-        fun ps [] = [[]]
-          | ps (x :: xs) =
-              let val rest = ps xs
-              in rest @ (map (fn ys => x :: ys) rest)
-              end
-      in
-        map (fn lst => SymSet.fromList lst) (ps elems)
-      end
-    val allRankings : (Sym.sym * int option) list vector =
-      let
-        val nonAcceptChoices =
-          (NONE :: List.tabulate (2 * (Set.size states) + 1, fn i => SOME i))
-        val acceptChoices =
-          (NONE :: List.tabulate ((Set.size states) + 1, fn i => SOME (i * 2)))
-        fun expandRankingDom x c lrsList =
-          List.map (fn lr => (x, c) :: lr) lrsList
-        fun expandRankingDomOnChoiceList x choices lrsList =
-          List.concatMap (fn c => expandRankingDom x c lrsList) choices
-        fun expandRankingDomForStateWithAllChoices x lrsList =
-          if SymSet.memb (x, accepts) then
-            expandRankingDomOnChoiceList x acceptChoices lrsList
-          else
-            expandRankingDomOnChoiceList x nonAcceptChoices lrsList
-        fun allRankingsFromListOfStates stateList =
-          case stateList of
-            [] => [[]]
-          | x :: xs =>
-              expandRankingDomForStateWithAllChoices x
-                (allRankingsFromListOfStates xs)
-      in
-        Vector.fromList (allRankingsFromListOfStates (Set.toList states))
-      end
-    val allRankingsIndices : int list =
-      let 
-        val _ = print ("Ranking count: " ^ Int.toString (Vector.length allRankings) ^ "\n")
-      in
-        List.tabulate (Vector.length allRankings, fn i => i)
-      end
-    val initRankingIndex : int =
-      let 
-        val idxValOpt : (int * (Sym.sym * int option) list) option =
-          Vector.findi (fn (_, ranking : (Sym.sym * int option) list) => 
-            List.all (fn (s, v) => 
-              if SymSet.memb (s, starts) then
+  fun complement (nba: nba, alph: Sym.sym Set.set) =
+    let
+      val states = #states nba
+      val starts = #starts nba
+      val accepts = #accepts nba
+      val trans = #trans nba
+      val statePowersetAsList : (Sym.sym Set.set) list =
+        let 
+          val elems = Set.toList states
+          fun ps [] = [[]]
+            | ps (x :: xs) =
+                let val rest = ps xs
+                in rest @ (map (fn ys => x :: ys) rest)
+                end
+        in
+          map (fn lst => SymSet.fromList lst) (ps elems)
+        end
+      val allRankings : (Sym.sym * int option) list vector =
+        let
+          val nonAcceptChoices =
+            (NONE :: List.tabulate (2 * (Set.size states) + 1, fn i => SOME i))
+          val acceptChoices =
+            (NONE :: List.tabulate ((Set.size states) + 1, fn i => SOME (i * 2)))
+          fun expandRankingDom x c lrsList =
+            List.map (fn lr => (x, c) :: lr) lrsList
+          fun expandRankingDomOnChoiceList x choices lrsList =
+            List.concatMap (fn c => expandRankingDom x c lrsList) choices
+          fun expandRankingDomForStateWithAllChoices x lrsList =
+            if SymSet.memb (x, accepts) then
+              expandRankingDomOnChoiceList x acceptChoices lrsList
+            else
+              expandRankingDomOnChoiceList x nonAcceptChoices lrsList
+          fun allRankingsFromListOfStates stateList =
+            case stateList of
+              [] => [[]]
+            | x :: xs =>
+                expandRankingDomForStateWithAllChoices x
+                  (allRankingsFromListOfStates xs)
+        in
+          Vector.fromList (allRankingsFromListOfStates (Set.toList states))
+        end
+      val allRankingsIndices : int list =
+        let 
+          val _ = print ("Ranking count: " ^ Int.toString (Vector.length allRankings) ^ "\n")
+        in
+          List.tabulate (Vector.length allRankings, fn i => i)
+        end
+      val initRankingIndex : int =
+        let 
+          val idxValOpt : (int * (Sym.sym * int option) list) option =
+            Vector.findi (fn (_, ranking : (Sym.sym * int option) list) => 
+              List.all (fn (s, v) => 
+                if SymSet.memb (s, starts) then
+                  case v of
+                    NONE => false
+                  | SOME v => v = 2 * (Set.size states)
+                else
+                  case v of
+                    NONE => true
+                  | SOME v => false)
+              ranking) allRankings
+        in
+          case idxValOpt of
+            NONE => raise Fail "No initial ranking found"
+          | SOME (idx, _) => idx
+        end
+      val allRankingsFns : (Sym.sym -> int option) vector =
+        Vector.map (fn ranking =>
+          fn x =>
+            case List.find (fn (y, _) => Sym.equal (y, x)) ranking of
+              SOME (_, v) => v
+            | NONE => raise Fail "Key not found") allRankings
+      fun allSigmaCoveringRankingIndices (x: Str.str) (i: int) : int list =
+        let 
+          val rankingFn_g = Vector.sub (allRankingsFns, i)
+        in 
+          List.filter
+            (fn j =>
+              let
+                val rankingFn_g' = Vector.sub (allRankingsFns, j)
+              in
+                List.all
+                  (fn (s, x', s') =>
+                      if not (Str.equal (x, x')) then
+                        true
+                      else
+                        case (rankingFn_g s, rankingFn_g' s') of
+                          (NONE, _) => true
+                        | (SOME _, NONE) => false
+                        | (SOME v, SOME v') => v' <= v) (Set.toList trans)
+              end) allRankingsIndices
+        end
+      fun evenStatesOfRanking (i: int) : Sym.sym Set.set =
+        let
+          val ranking_g = Vector.sub (allRankings, i)
+          val evenPairs =
+            List.filter
+              (fn (_, v) =>
                 case v of
                   NONE => false
-                | SOME v => v = 2 * (Set.size states)
-              else
-                case v of
-                  NONE => true
-                | SOME v => false)
-            ranking) allRankings
-      in
-        case idxValOpt of
-          NONE => raise Fail "No initial ranking found"
-        | SOME (idx, _) => idx
-      end
-    val allRankingsFns : (Sym.sym -> int option) vector =
-      Vector.map (fn ranking =>
-        fn x =>
-          case List.find (fn (y, _) => Sym.equal (y, x)) ranking of
-            SOME (_, v) => v
-          | NONE => raise Fail "Key not found") allRankings
-    fun allSigmaCoveringRankingIndices (x: Str.str) (i: int) : int list =
-      let 
-        val rankingFn_g = Vector.sub (allRankingsFns, i)
-      in 
-        List.filter
-          (fn j =>
-             let
-               val rankingFn_g' = Vector.sub (allRankingsFns, j)
-             in
-               List.all
-                 (fn (s, x', s') =>
-                    if not (Str.equal (x, x')) then
-                      true
-                    else
-                      case (rankingFn_g s, rankingFn_g' s') of
-                        (NONE, _) => true
-                      | (SOME _, NONE) => false
-                      | (SOME v, SOME v') => v' <= v) (Set.toList trans)
-             end) allRankingsIndices
-      end
-    fun evenStatesOfRanking (i: int) : Sym.sym Set.set =
-      let
-        val ranking_g = Vector.sub (allRankings, i)
-        val evenPairs =
-          List.filter
-            (fn (_, v) =>
-               case v of
-                 NONE => false
-               | SOME v => v mod 2 = 0)
-            ranking_g
-      in 
-        SymSet.fromList (List.map (fn (s, _) => s) evenPairs)
-      end
-    fun neighborsThroughSigma (x: Str.str) (P: Sym.sym Set.set) : Sym.sym Set.set =
-      let
-        val neighbors = 
-          List.mapPartial
-            (fn (q, x', q') =>
-              if SymSet.memb (q, P) andalso Str.equal (x, x') then
-                SOME q'
-              else
-                NONE) (Set.toList trans)
-      in
-        SymSet.fromList neighbors
-      end
-    fun adjacentPairsThroughSigma (x: Str.str) (i: int, P: Sym.sym Set.set) : (int * Sym.sym Set.set) list  =
-      let
-        val sigmaCoveringRankingIndices =
-          allSigmaCoveringRankingIndices x i
-        fun setGivenRankingIdx (j: int) =
-          let
-            val evenStatesOf_j = evenStatesOfRanking j
-            val P' = 
-              if (Set.isEmpty P) then evenStatesOf_j else
-                SymSet.inter (evenStatesOf_j, neighborsThroughSigma x P)
-          in
-            P'
-          end
-      in
-        List.map (fn j => (j, setGivenRankingIdx j)) sigmaCoveringRankingIndices
-      end
-    val ordOnPairs = Set.comparePair(Int.compare, SymSet.compare)
-    fun pairToSym (i, P) =
-      let 
-        val s = "<" ^ Int.toString i ^ ", " ^ "<" ^ SymSet.toString P ^ ">>"
-      in
-        Sym.fromString s
-      end
-    val buildStatesAndTrans =
-      let
-        val initial : int * Sym.sym Set.set = (initRankingIndex, Set.empty)
-        val sigmaStrList : Str.str list =
-          List.map (fn x => [x]) (Set.toList (alphabet nba))
-        
-        val analyzed = ref (Set.empty)
-        val seen = ref (Set.empty)
-        val worklist = ref [initial]     
-        val triples = ref []
-        fun successorsThroughSigma x (i, P) = 
-          adjacentPairsThroughSigma x (i, P)
-
-        fun step () = 
-          case (!worklist) of
-            [] => ()
-          | (i, P) :: rest =>
-              let val _ = worklist := rest in
-                if Set.memb ordOnPairs ((i, P), !analyzed) then () else 
-                  let
-                    val _ = analyzed := Set.union ordOnPairs (!analyzed, Set.sing ((i, P)))
-                    val _ = List.app (fn x => List.app 
-                      (fn (j, P') => 
-                        let 
-                          val _ = triples := ((i, P), x, (j, P')) :: (!triples)
-                          val _ = if (Set.memb ordOnPairs ((j, P'), !seen)) then () else
-                            (worklist := (j, P') :: (!worklist);
-                            seen := Set.union ordOnPairs (!seen, Set.sing ((j, P'))))
-                        in () end)
-                      (successorsThroughSigma x (i, P))) sigmaStrList
-                  in () end
-              end
-        fun loop () =
-          if null (!worklist) then (!analyzed, !triples)
-          else
-            ((let 
-              val _ = print ("Analyzing state: " ^ (Sym.toString o pairToSym) (hd (!worklist)) ^ "\n")
+                | SOME v => v mod 2 = 0)
+              ranking_g
+        in 
+          SymSet.fromList (List.map (fn (s, _) => s) evenPairs)
+        end
+      fun neighborsThroughSigma (x: Str.str) (P: Sym.sym Set.set) : Sym.sym Set.set =
+        let
+          val neighbors = 
+            List.mapPartial
+              (fn (q, x', q') =>
+                if SymSet.memb (q, P) andalso Str.equal (x, x') then
+                  SOME q'
+                else
+                  NONE) (Set.toList trans)
+        in
+          SymSet.fromList neighbors
+        end
+      fun adjacentPairsThroughSigma (x: Str.str) (i: int, P: Sym.sym Set.set) : (int * Sym.sym Set.set) list  =
+        let
+          val sigmaCoveringRankingIndices =
+            allSigmaCoveringRankingIndices x i
+          fun setGivenRankingIdx (j: int) =
+            let
+              val evenStatesOf_j = evenStatesOfRanking j
+              val P' = 
+                if (Set.isEmpty P) then evenStatesOf_j else
+                  SymSet.inter (evenStatesOf_j, neighborsThroughSigma x P)
             in
-              (step ();
-              let 
-                val _ = print ("-> Analyzed states: " ^ (Int.toString o Set.size) (!analyzed) ^ "\n") 
-                val _ = print ("   Seen states: " ^ (Int.toString o Set.size) (!seen) ^ "\n")
-                val _ = print ("   Worklist length: " ^ (Int.toString o List.length) (!worklist) ^ "\n")
-                val _ = print ("   Transition count: " ^ (Int.toString o List.length) (!triples) ^ "\n")
-              in () 
-              end)
-            end);
-            loop ())
+              P'
+            end
+        in
+          List.map (fn j => (j, setGivenRankingIdx j)) sigmaCoveringRankingIndices
+        end
+      val ordOnPairs = Set.comparePair(Int.compare, SymSet.compare)
+      fun pairToSym (i, P) =
+        let 
+          val s = "<" ^ Int.toString i ^ ", " ^ "<" ^ SymSet.toString P ^ ">>"
+        in
+          Sym.fromString s
+        end
+      val buildStatesAndTrans =
+        let
+          val initial : int * Sym.sym Set.set = (initRankingIndex, Set.empty)
+          val sigmaStrList : Str.str list =
+            List.map (fn x => [x]) (Set.toList alph)
+          
+          val analyzed = ref (Set.empty)
+          val seen = ref (Set.empty)
+          val worklist = ref [initial]     
+          val triples = ref []
+          fun successorsThroughSigma x (i, P) = 
+            adjacentPairsThroughSigma x (i, P)
+
+          fun step () = 
+            case (!worklist) of
+              [] => ()
+            | (i, P) :: rest =>
+                let val _ = worklist := rest in
+                  if Set.memb ordOnPairs ((i, P), !analyzed) then () else 
+                    let
+                      val _ = analyzed := Set.union ordOnPairs (!analyzed, Set.sing ((i, P)))
+                      val _ = List.app (fn x => List.app 
+                        (fn (j, P') => 
+                          let 
+                            val _ = triples := ((i, P), x, (j, P')) :: (!triples)
+                            val _ = if (Set.memb ordOnPairs ((j, P'), !seen)) then () else
+                              (worklist := (j, P') :: (!worklist);
+                              seen := Set.union ordOnPairs (!seen, Set.sing ((j, P'))))
+                          in () end)
+                        (successorsThroughSigma x (i, P))) sigmaStrList
+                    in () end
+                end
+          fun loop () =
+            if null (!worklist) then (!analyzed, !triples)
+            else
+              ((let 
+                val _ = print ("Analyzing state: " ^ (Sym.toString o pairToSym) (hd (!worklist)) ^ "\n")
+              in
+                (step ();
+                let 
+                  val _ = print ("-> Analyzed states: " ^ (Int.toString o Set.size) (!analyzed) ^ "\n") 
+                  val _ = print ("   Seen states: " ^ (Int.toString o Set.size) (!seen) ^ "\n")
+                  val _ = print ("   Worklist length: " ^ (Int.toString o List.length) (!worklist) ^ "\n")
+                  val _ = print ("   Transition count: " ^ (Int.toString o List.length) (!triples) ^ "\n")
+                in () 
+                end)
+              end);
+              loop ())
+        in
+          loop ()
+        end
+    in 
+      let 
+        val (rawStates, rawTrans) = buildStatesAndTrans
+        val rawAccepts = 
+          Set.filter (fn (_, P) => Set.isEmpty P) rawStates
+        val states' = SymSet.map pairToSym rawStates
+        val accepts' = SymSet.map pairToSym rawAccepts
+        val trans' =
+          TranSet.fromList (List.map (fn ((i, P), x, (j, Q)) =>
+            let
+              val i' = pairToSym (i, P)
+              val j' = pairToSym (j, Q)
+            in
+              (i', x, j')
+            end) rawTrans)
+        val _ = print ("Total states: " ^ (Int.toString o Set.size) states' ^ "\n")
+        val _ = print ("Total transitions: " ^ (Int.toString o Set.size) trans' ^ "\n")
       in
-        loop ()
+        fromConcr
+          { states = states'
+          , starts = Set.sing (pairToSym (initRankingIndex, Set.empty))
+          , accepts = accepts'
+          , trans = trans'
+          }
       end
-  in 
-    let 
-      val (rawStates, rawTrans) = buildStatesAndTrans
-      val rawAccepts = 
-        Set.filter (fn (_, P) => Set.isEmpty P) rawStates
-      val states' = SymSet.map pairToSym rawStates
-      val accepts' = SymSet.map pairToSym rawAccepts
-      val trans' =
-        TranSet.fromList (List.map (fn ((i, P), x, (j, Q)) =>
-          let
-            val i' = pairToSym (i, P)
-            val j' = pairToSym (j, Q)
-          in
-            (i', x, j')
-          end) rawTrans)
-      val _ = print ("Total states: " ^ (Int.toString o Set.size) states' ^ "\n")
-      val _ = print ("Total transitions: " ^ (Int.toString o Set.size) trans' ^ "\n")
-    in
-      fromConcr
-        { states = states'
-        , starts = Set.sing (pairToSym (initRankingIndex, Set.empty))
-        , accepts = accepts'
-        , trans = trans'
-        }
     end
-  end
+
+  fun complement2 (nba: nba, alph: Sym.sym Set.set) =
+    let
+      val states = #states nba
+      val starts = #starts nba
+      val accepts = #accepts nba
+      val trans = #trans nba
+      val statePowersetAsList : (Sym.sym Set.set) list =
+        let 
+          val elems = Set.toList states
+          fun ps [] = [[]]
+            | ps (x :: xs) =
+                let val rest = ps xs
+                in rest @ (map (fn ys => x :: ys) rest)
+                end
+        in
+          map (fn lst => SymSet.fromList lst) (ps elems)
+        end
+      val allLevelRankings : (Sym.sym * int) list vector =
+        let
+          val nonAcceptChoices =
+            List.tabulate (2 * (Set.size states) + 1, fn i => i)
+          val acceptChoices =
+            List.tabulate ((Set.size states) + 1, fn i => i * 2)
+          fun expandRankingDom x c lrsList =
+            List.map (fn lr => (x, c) :: lr) lrsList
+          fun expandRankingDomOnChoiceList x choices lrsList =
+            List.concatMap (fn c => expandRankingDom x c lrsList) choices
+          fun expandRankingDomForStateWithAllChoices x lrsList =
+            if SymSet.memb (x, accepts) then
+              expandRankingDomOnChoiceList x acceptChoices lrsList
+            else
+              expandRankingDomOnChoiceList x nonAcceptChoices lrsList
+          fun allRankingsFromListOfStates stateList =
+            case stateList of
+              [] => [[]]
+            | x :: xs =>
+                expandRankingDomForStateWithAllChoices x
+                  (allRankingsFromListOfStates xs)
+        in
+          Vector.fromList (allRankingsFromListOfStates (Set.toList states))
+        end
+      val allLevelRankingsIndices : int list =
+        List.tabulate (Vector.length allLevelRankings, fn i => i)
+      val allLevelRankingsFns : (Sym.sym -> int) vector =
+        Vector.map (fn ranking =>
+          fn x =>
+            case List.find (fn (y, _) => Sym.equal (y, x)) ranking of
+              SOME (_, v) => v
+            | NONE => raise Fail "Key not found") allLevelRankings
+      val allTightLevelRankingsIndices : int list =
+        List.filter (fn i => 
+          let
+            val ranking = Vector.sub (allLevelRankings, i)
+            val max_rank = List.foldl (fn ((_, r), acc) => Int.max (r, acc)) 0 ranking
+            fun odds_upto n : int list =
+              List.tabulate (n div 2 + n mod 2, fn i => 2 * i + 1)
+          in
+            if (max_rank mod 2 = 0) then false
+            else
+              List.all (fn r => 
+                (List.exists (fn (_, r') => r = r') ranking)) 
+              (odds_upto max_rank) 
+          end) allLevelRankingsIndices
+      fun allSetSigmaCoveringTightLevelRankingsIndices (x : Str.str) (P : Sym.sym Set.set) (i : int) : int list =
+        let 
+          val rankingFn_g = Vector.sub (allLevelRankingsFns, i)  
+        in 
+          List.filter
+            (fn j =>
+              let
+                val rankingFn_g' = Vector.sub (allLevelRankingsFns, j)
+              in
+                List.all
+                  (fn (q, x', q') =>
+                      if (not (Str.equal (x, x'))) orelse (not (SymSet.memb (q, P))) then
+                        true
+                      else
+                        rankingFn_g' q' <= rankingFn_g q)
+                  (Set.toList trans)
+              end) allTightLevelRankingsIndices
+        end
+      fun evenStatesOfRanking (i: int) : Sym.sym Set.set =
+        let
+          val ranking_g = Vector.sub (allLevelRankings, i)
+          val evenPairs =
+            List.filter
+              (fn (_, v) => v mod 2 = 0)
+              ranking_g
+        in
+          SymSet.fromList (List.map (fn (s, _) => s) evenPairs)
+        end
+      fun neighborsThroughSigma (x: Str.str) (P: Sym.sym Set.set) : Sym.sym Set.set =
+        let
+          val neighbors = 
+            List.mapPartial
+              (fn (q, x', q') =>
+                if SymSet.memb (q, P) andalso Str.equal (x, x') then
+                  SOME q'
+                else
+                  NONE) (Set.toList trans)
+        in
+          SymSet.fromList neighbors
+        end
+      fun adjacentTriplesThroughSigma (x: Str.str) (S : Sym.sym Set.set, O : Sym.sym Set.set, i : int) =
+        let
+          val setSigmaCoveringTightLevelRankingsIndices =
+            allSetSigmaCoveringTightLevelRankingsIndices x S i
+          fun tripleGivenLevelRankingIdx (j: int) =
+            let
+              val evenStatesOf_j = evenStatesOfRanking j
+              val firstSet = neighborsThroughSigma x S
+              val secondSet = 
+                if (Set.isEmpty O) 
+                  then SymSet.inter (firstSet, evenStatesOf_j)
+                  else SymSet.inter (neighborsThroughSigma x O, evenStatesOf_j) 
+            in
+              (firstSet, secondSet, j)
+            end
+        in
+          List.map (fn j => tripleGivenLevelRankingIdx j) setSigmaCoveringTightLevelRankingsIndices
+        end
+      val ordOnTriples = Set.compareTriple(SymSet.compare, SymSet.compare, Int.compare)
+      fun tripleToSym (S, O, i) =
+        let 
+          val s = "<<" ^ SymSet.toString S ^ ">, <" ^ SymSet.toString O ^ ">, " ^ Int.toString i ^ ">"
+        in
+          Sym.fromString s
+        end
+      val initialSet = 
+        Set.times3
+          (Set.sing starts, Set.sing Set.empty, Set.fromList Int.compare allTightLevelRankingsIndices)
+      val buildStatesAndTrans =
+        let 
+          val sigmaStrList : Str.str list =
+            List.map (fn x => [x]) (Set.toList alph)
+          val analyzed = ref (Set.empty)
+          val seen = ref (initialSet)
+          val worklist = ref (Set.toList initialSet)
+          val triples = ref []
+          fun successorsThroughSigma x (S, O, i) = 
+            adjacentTriplesThroughSigma x (S, O, i)
+          fun step () =
+            case (!worklist) of
+              [] => ()
+            | (S, O, i) :: rest =>
+                let val _ = worklist := rest in
+                  if Set.memb ordOnTriples ((S, O, i), !analyzed) then () else 
+                    let
+                      val _ = analyzed := Set.union ordOnTriples (!analyzed, Set.sing ((S, O, i)))
+                      (* val _ = stateSet := SymSet.union (!stateSet, Set.sing (tripleToSym (S, O, i))) *)
+                      val _ = List.app (fn x => List.app 
+                        (fn (S', O', j) => 
+                          let 
+                            val _ = triples := ((S, O, i), x, (S', O', j)) :: (!triples)
+                            (* val _ = transSet := TranSet.union (!transSet, Set.sing ((tripleToSym (S, O, i), x, tripleToSym (S', O', j)))) *)
+                            val _ = if (Set.memb ordOnTriples ((S', O', j), !seen)) then () else
+                              (worklist := (S', O', j) :: (!worklist);
+                              seen := Set.union ordOnTriples (!seen, Set.sing ((S', O', j))))
+                          in () end)
+                        (successorsThroughSigma x (S, O, i))) sigmaStrList
+                    in () end
+                end
+          fun loop () =
+            if null (!worklist) then (!analyzed, !triples)
+            else
+              ((let 
+                val _ = print ("Analyzing state: " ^ (Sym.toString o tripleToSym) (hd (!worklist)) ^ "\n")
+              in
+                (step ();
+                let 
+                  val _ = print ("-> Analyzed states: " ^ (Int.toString o Set.size) (!analyzed) ^ "\n") 
+                  val _ = print ("   Seen states: " ^ (Int.toString o Set.size) (!seen) ^ "\n")
+                  val _ = print ("   Worklist length: " ^ (Int.toString o List.length) (!worklist) ^ "\n")
+                  val _ = print ("   Transition count: " ^ (Int.toString o List.length) (!triples) ^ "\n")
+                in () 
+                end)
+              end);
+              loop ())
+        in
+          loop ()
+        end      
+    in
+      let 
+        val (rawStates, rawTrans) = buildStatesAndTrans
+        val rawAccepts = 
+          Set.filter (fn (_, O, _) => Set.isEmpty O) rawStates
+        val states' = SymSet.map tripleToSym rawStates
+        val accepts' = SymSet.map tripleToSym rawAccepts
+        val trans' =
+          TranSet.fromList (List.map (fn ((S, O, i), x, (S', O', j)) =>
+            let
+              val first = tripleToSym (S, O, i)
+              val second = tripleToSym (S', O', j)
+            in
+              (first, x, second)
+            end) rawTrans)
+        val _ = print ("Total states: " ^ (Int.toString o Set.size) states' ^ "\n")
+        val _ = print ("Total transitions: " ^ (Int.toString o Set.size) trans' ^ "\n")
+      in
+        fromConcr
+          { states = states'
+          , starts = SymSet.map tripleToSym initialSet
+          , accepts = accepts'
+          , trans = trans'
+          }
+      end
+    end
 
 end
