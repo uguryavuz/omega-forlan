@@ -31,5 +31,4 @@ sig
   val toOmegaReg: nba -> OmegaReg.omegaReg
   val isEmpty: nba -> bool
   val complement: nba * Sym.sym Set.set -> nba
-  val complement2: nba * Sym.sym Set.set -> nba
 end
