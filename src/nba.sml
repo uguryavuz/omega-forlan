@@ -500,7 +500,7 @@ struct
         }
     end
 
-  fun complement (nba: nba, alph: Sym.sym Set.set) =
+  fun complement (nba: nba, alph: Sym.sym Set.set, verbose: bool) =
     let
       val states = #states nba
       val starts = #starts nba
@@ -698,24 +698,45 @@ struct
               (!analyzed, !triples)
             else
               ( (let
-                   val _ = print
-                     ("Analyzing state: "
-                      ^ (Sym.toString o tripleToSym) (hd (!worklist)) ^ "\n")
+                   val _ =
+                     if verbose then
+                       (print
+                          ("Analyzing state: "
+                           ^ (Sym.toString o tripleToSym) (hd (!worklist))
+                           ^ "\n"))
+                     else
+                       ()
                  in
                    ( step ()
                    ; let
-                       val _ = print
-                         ("-> Analyzed states: "
-                          ^ (Int.toString o Set.size) (!analyzed) ^ "\n")
-                       val _ = print
-                         ("   Seen states: " ^ (Int.toString o Set.size) (!seen)
-                          ^ "\n")
-                       val _ = print
-                         ("   Worklist length: "
-                          ^ (Int.toString o List.length) (!worklist) ^ "\n")
-                       val _ = print
-                         ("   Transition count: "
-                          ^ (Int.toString o List.length) (!triples) ^ "\n")
+                       val _ =
+                         if verbose then
+                           (print
+                              ("-> Analyzed states: "
+                               ^ (Int.toString o Set.size) (!analyzed) ^ "\n"))
+                         else
+                           ()
+                       val _ =
+                         if verbose then
+                           (print
+                              ("   Seen states: "
+                               ^ (Int.toString o Set.size) (!seen) ^ "\n"))
+                         else
+                           ()
+                       val _ =
+                         if verbose then
+                           (print
+                              ("   Worklist length: "
+                               ^ (Int.toString o List.length) (!worklist) ^ "\n"))
+                         else
+                           ()
+                       val _ =
+                         if verbose then
+                           (print
+                              ("   Transition count: "
+                               ^ (Int.toString o List.length) (!triples) ^ "\n"))
+                         else
+                           ()
                      in
                        ()
                      end
@@ -741,10 +762,17 @@ struct
                 in
                   (first, x, second)
                 end) rawTrans)
-        val _ = print
-          ("Total states: " ^ (Int.toString o Set.size) states' ^ "\n")
-        val _ = print
-          ("Total transitions: " ^ (Int.toString o Set.size) trans' ^ "\n")
+        val _ =
+          if verbose then
+            (print ("Total states: " ^ (Int.toString o Set.size) states' ^ "\n"))
+          else
+            ()
+        val _ =
+          if verbose then
+            (print
+               ("Total transitions: " ^ (Int.toString o Set.size) trans' ^ "\n"))
+          else
+            ()
       in
         fromConcr
           { states = states'
@@ -754,5 +782,17 @@ struct
           }
       end
     end
+
+  fun equivalent (nba1, nba2) : bool =
+    let
+      val alphUnion = SymSet.union (alphabet nba1, alphabet nba2)
+      val b1 = inter (nba1, complement (nba2, alphUnion, false))
+      val b2 = inter (nba2, complement (nba1, alphUnion, false))
+    in
+      (isEmpty b1 andalso isEmpty b2)
+    end
+
+  fun isUniversal (nba: nba, alph: Sym.sym Set.set) : bool =
+    isEmpty (complement (nba, alph, false))
 
 end
