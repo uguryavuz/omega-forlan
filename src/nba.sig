@@ -30,5 +30,6 @@ sig
   val fromOmegaReg: OmegaReg.omegaReg -> nba
   val toOmegaReg: nba -> OmegaReg.omegaReg
   val isEmpty: nba -> bool
+  val inter: nba * nba -> nba
   val complement: nba * Sym.sym Set.set -> nba
 end

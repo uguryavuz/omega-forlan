@@ -440,6 +440,66 @@ struct
       not (List.exists lassoPair (toStartAccRegPairs nba))
     end
 
+  fun inter (nba1: nba, nba2: nba) : nba =
+    let
+      val states1 = #states nba1
+      val states2 = #states nba2
+      val starts1 = #starts nba1
+      val starts2 = #starts nba2
+      val accepts1 = #accepts nba1
+      val accepts2 = #accepts nba2
+      val transList1 = Set.toList (#trans nba1)
+      val transList2 = Set.toList (#trans nba2)
+      val symb1 = Sym.fromString "1"
+      val symb2 = Sym.fromString "2"
+      val rawStates = Set.times3 (states1, states2, SymSet.fromString "1,2")
+      val rawStarts = Set.times3 (starts1, starts2, Set.sing symb1)
+      val rawAccepts = Set.times3 (states1, accepts2, Set.sing symb2)
+      fun edgesForTransPair (s1, x1, s1') (s2, x2, s2') :
+        ((Sym.sym * Sym.sym * Sym.sym) * Str.str * (Sym.sym * Sym.sym * Sym.sym)) list =
+        if Str.equal (x1, x2) then
+          let
+            val firstEdge =
+              if SymSet.memb (s1, accepts1) then
+                ((s1, s2, symb1), x1, (s1', s2', symb2))
+              else
+                ((s1, s2, symb1), x1, (s1', s2', symb1))
+            val secondEdge =
+              if SymSet.memb (s2, accepts2) then
+                ((s1, s2, symb2), x1, (s1', s2', symb1))
+              else
+                ((s1, s2, symb2), x1, (s1', s2', symb2))
+          in
+            [firstEdge, secondEdge]
+          end
+        else
+          []
+      fun edgesForTransFrom1 (s1, x1, s1') =
+        List.concatMap
+          (fn (s2, x2, s2') => edgesForTransPair (s1, x1, s1') (s2, x2, s2'))
+          transList2
+      val rawTransList = List.concatMap edgesForTransFrom1 transList1
+      fun tripleToSym (s1, s2, symb) =
+        Sym.fromString
+          ("<" ^ Sym.toString s1 ^ ", " ^ Sym.toString s2 ^ ", "
+           ^ Sym.toString symb ^ ">")
+    in
+      fromConcr
+        { states = SymSet.map tripleToSym rawStates
+        , starts = SymSet.map tripleToSym rawStarts
+        , accepts = SymSet.map tripleToSym rawAccepts
+        , trans = TranSet.fromList
+            (List.map
+               (fn ((s1, s2, symb), x, (s1', s2', symb')) =>
+                  let
+                    val first = tripleToSym (s1, s2, symb)
+                    val second = tripleToSym (s1', s2', symb')
+                  in
+                    (first, x, second)
+                  end) rawTransList)
+        }
+    end
+
   fun complement (nba: nba, alph: Sym.sym Set.set) =
     let
       val states = #states nba
