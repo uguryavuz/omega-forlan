@@ -7,6 +7,10 @@ sig
   type omegaReg
   val fromConcr: concr -> omegaReg
   val toConcr: omegaReg -> concr
+  val inputFromLabToks: (int * CustomLex.tok) list
+                        -> omegaReg * (int * CustomLex.tok) list
+  val fromString: string -> omegaReg
+  val input: string -> omegaReg
   val toString: omegaReg -> string
   val output: omegaReg -> unit
   val emptySet: omegaReg

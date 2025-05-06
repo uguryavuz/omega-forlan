@@ -26,15 +26,88 @@ struct
 
   (*********************************** Input ***********************************)
 
+  fun extractUntilTok lts tok =
+    let
+      fun loop (acc, []) =
+            raise Fail "extractUntilTok: targeted token not found"
+        | loop (acc, (pos, tok') :: rest) =
+            if CustomLex.equalTok (tok, tok') then (List.rev acc, rest)
+            else loop ((pos, tok') :: acc, rest)
+    in
+      loop ([], lts)
+    end
+
+  fun inpORegExp0 lts =
+    let
+      val (oreg1, lts) = inpORegExp1 lts
+    in
+      case lts of
+        (_, CustomLex.Plus) :: lts =>
+          let val (oreg2, lts) = inpORegExp0 lts
+          in (Union (oreg1, oreg2), lts)
+          end
+      | _ => (oreg1, lts)
+    end
+
+  and inpORegExp1 lts =
+    case lts of
+      (_, CustomLex.OpenPar) :: lts =>
+        let
+          val (oreg, lts) = inpORegExp0 lts
+        in
+          case lts of
+            nil => CustomLex.errorNotEOFTerminated ()
+          | (_, CustomLex.ClosPar) :: lts => (oreg, lts)
+          | lt :: _ => (CustomLex.unexpectedTok lt)
+        end
+    | (pos, CustomLex.OpenBrack) :: lts =>
+        let
+          val (regLabToks, restLabToks) =
+            extractUntilTok lts (CustomLex.ClosBrack)
+          val regLabForlanToks =
+            List.map
+              (fn (pos, customTok) =>
+                 (pos, CustomLex.customTokToForlanTok customTok)) regLabToks
+          val (reg, leftover) = Reg.inputFromLabToks regLabForlanToks
+          val _ =
+            if List.null leftover then () else (Lex.unexpectedTok (hd leftover))
+        in
+          case restLabToks of
+            (_, CustomLex.At) :: lts => (OmegaIter reg, lts)
+          | _ =>
+              let val (oreg, lts) = inpORegExp0 restLabToks
+              in (Concat (reg, oreg), lts)
+              end
+        end
+    | lt :: _ => (CustomLex.unexpectedTok lt)
+    | nil => CustomLex.errorNotEOFTerminated ()
+
+  val inputFromLabToks = inpORegExp0
+
+  fun fromString s =
+    case inpORegExp0 (CustomLex.lexString s) of
+      (oreg, [(_, CustomLex.EOF)]) => (fromConcr oreg)
+    | (_, nil) => Messages.cannotHappen ()
+    | (_, lt :: _) => CustomLex.unexpectedTok lt
+
+  fun input fil =
+    case inpORegExp0 (CustomLex.lexFile fil) of
+      (oreg, [(_, CustomLex.EOF)]) => (fromConcr oreg)
+    | (_, nil) => Messages.cannotHappen ()
+    | (_, lt :: _) => CustomLex.unexpectedTok lt
 
   (*********************************** Output **********************************)
 
-  fun toString (OmegaIter r) =
-        "[" ^ Reg.toString r ^ "]@"
-    | toString (Concat (r, or)) =
-        "[" ^ Reg.toString r ^ "]" ^ toString or
-    | toString (Union (or1, or2)) =
-        toString or1 ^ "+" ^ toString or2
+  fun toString or =
+    case or of
+      OmegaIter r => "[" ^ Reg.toString r ^ "]@"
+    | Union (or1, or2) => toString or1 ^ "+" ^ toString or2
+    | Concat (r, or2) =>
+        case or2 of
+          Union (or2_1, or2_2) =>
+            "[" ^ Reg.toString r ^ "](" ^ toString or2_1 ^ "+" ^ toString or2_2
+            ^ ")"
+        | _ => "[" ^ Reg.toString r ^ "]" ^ toString or2
 
   fun output or =
     (print (toString or); print PP.newline)
