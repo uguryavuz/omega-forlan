@@ -12,7 +12,7 @@ sig
   val fromString: string -> omegaReg
   val input: string -> omegaReg
   val toString: omegaReg -> string
-  val output: omegaReg -> unit
+  val output: string * omegaReg -> unit
   val emptySet: omegaReg
   val omegaIter: Reg.reg -> omegaReg
   val concat: Reg.reg * omegaReg -> omegaReg

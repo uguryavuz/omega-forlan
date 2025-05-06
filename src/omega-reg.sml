@@ -112,6 +112,20 @@ struct
   fun output or =
     (print (toString or); print PP.newline)
 
+  fun output("", or) = (print (toString or); print PP.newline)
+    | output(fil, or) = 
+        case SOME(TextIO.openOut fil) handle _ => NONE of
+           NONE     =>
+             Messages.errorPP
+             (fn () =>
+                   [PP.fromString "unable", PP.fromString "to",
+                    PP.fromString "open", PP.fromString "file:",
+                    PP.quote(PP.fromStringSplitEscape fil)])
+         | SOME stm =>
+             (TextIO.output(stm, toString or);
+              TextIO.output(stm, PP.newline);
+              TextIO.closeOut stm)
+
   (****************************** Other Functions ******************************)
 
   val emptySet = OmegaIter (Reg.emptySet)
