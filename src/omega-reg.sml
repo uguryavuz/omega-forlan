@@ -101,16 +101,13 @@ struct
   fun toString or =
     case or of
       OmegaIter r => "[" ^ Reg.toString r ^ "]@"
-    | Union (or1, or2) => toString or1 ^ "+" ^ toString or2
+    | Union (or1, or2) => toString or1 ^ " + " ^ toString or2
     | Concat (r, or2) =>
         case or2 of
           Union (or2_1, or2_2) =>
             "[" ^ Reg.toString r ^ "](" ^ toString or2_1 ^ "+" ^ toString or2_2
             ^ ")"
         | _ => "[" ^ Reg.toString r ^ "]" ^ toString or2
-
-  fun output or =
-    (print (toString or); print PP.newline)
 
   fun output("", or) = (print (toString or); print PP.newline)
     | output(fil, or) = 
