@@ -89,7 +89,7 @@ The following functions are provided for parsing and I/O:
 ### Canonical forms and utilities
 
 - `genUnion : omegaReg list -> omegaReg`  
-  Takes a list of ω-regular expressions and returns their left-associatied union. Returns `emptySet` if the list is empty.
+  Takes a list of ω-regular expressions and returns their left-associated union. Returns `emptySet` if the list is empty.
 
 - `toFinUnionPairs : omegaReg -> (Reg.reg * Reg.reg) list`  
   We note that every ω-regular expression (in the infinite fragment) can be expressed as a finite union $\bigcup_{i} A_i B_i^{\omega}$, where $A_i$ and $B_i$ are regular expressions. This is a well-known result, e.g. refer to Theorem 3.2. in [[Perrin and Pin, 2004]](#references). Then, `toFinUnionPairs` returns the corresponding list of pairs of regular expressions  $(A_i, B_i)$ for a given ω-regular expression. 
@@ -111,7 +111,7 @@ The following functions are provided for parsing and I/O:
   ```
 
 - `mapSubReg : (Reg.reg -> Reg.reg) -> omegaReg -> omegaReg`  
-  Applies a transformation to all regular subexpressions inside the ω-regular expression, preserving the structure of the ω-regular expression. This is currently not used in the library, but it might be useful for future extensions regarding the simplification of ω-regular expressions.
+  Applies a transformation to all regular subexpressions inside the ω-regular expression, preserving the structure of the ω-regular expression. This is currently not used in the library, but it might be useful for future extensions regarding the simplification of ω-regular expressions that incorporates Forlan's simplification algorithms of regular expressions. Such a simplification procedure would also use equivalences between ω-regular expressions such as those noted in Section 3 of [[Perrin and Pin, 2004]](#references).
 
 ---
 
@@ -187,26 +187,52 @@ The `NBA` module defines non-deterministic Büchi automata (NBAs), supporting st
 - `renameStatesCanonically : nba -> nba`  
   Canonically renames the states of the automaton. Adapted from Forlan's `NFA.renameStatesCanonically`.
 
-### Operations
+### NBA/ω-regular expression conversions
 
-- `union : nba * nba -> nba`  
-- `concat : NFA.nfa * nba -> nba`  
-- `omegaIter : NFA.nfa -> nba`  
-- `inter : nba * nba -> nba`  
-- `complement : nba * Sym.sym Set.set * bool -> nba`
-
-### Conversion with ω-regular Expressions
+An ω-regular language can be recognized by a non-deterministic Büchi automaton (NBA), and vice versa. 
+This was established in Büchi's seminal work [[Büchi, 1966]](#references) and is occasionally referred to as _Büchi's characterization theorem_.
 
 - `fromOmegaReg : OmegaReg.omegaReg -> nba`  
+  Converts an ω-regular expression to an NBA, using the implementation of `union`, `concat`, and `omegaIter` described in the next section.
 - `toOmegaReg : nba -> OmegaReg.omegaReg`
+  Converts an NBA to an ω-regular expression using the construction from Büchi's seminal work.
+  The implementation follows the description of this construction in [[Finkbeiner and Schewe, 2008]](#references),
+  specifically in the notes for Lecture 2.
 
-### Decision Procedures
+### Operations
 
-- `isEmpty : nba -> bool`  
+The `union`, `concat`, and `omegaIter` operations are implemented as described in [[Finkbeiner and Schewe, 2008]](#references).
+
+- `union : nba * nba -> nba`  
+  Returns the union of two NBAs. 
+- `concat : NFA.nfa * nba -> nba`  
+  Returns the concatenation of an NFA and an NBA. 
+- `omegaIter : NFA.nfa -> nba`  
+  Returns the ω-iteration of an NFA. 
+- `inter : nba * nba -> nba`  
+  Returns the intersection of two NBAs. This construction is based on the work of [[Choueka, 1974]](#references). The implementation follows the description of this construction in [[Finkbeiner and Schewe, 2008]](#references): however, this particular description contains a typo in the fourth case of its transitions which has been corrected in the implementation. 
+- `complement : nba * Sym.sym Set.set * bool -> nba`  
+  Returns the complement of an NBA for a given alphabet. Namely, given an NBA $A$ and an alphabet $\Sigma$, the complement of $A$ accepts $\Sigma^{\omega} \setminus \mathcal{L}(A)$. The third argument is a Boolean flag controlling the verbosity of the command's output. 
+
+  We note that complementation for Büchi automata is a non-trivial operation, since they are not deterministic and Büchi automata are not necessarily determinizable. (In particular, deterministic Büchi automata recognize a proper subset of ω-regular languages. See Section 6 of [[Perrin and Pin, 2004]](#references) for examples.)  It is known to be an expensive operation, with a complexity lower-bound that is exponential in the number of states. We follow the construction of [[Friedgut et al., 2004]](#references), which is a faster version of the construction in [[Kupferman and Vardi, 2001]](#references). An earlier version of this project used the construction by Kupferman and Vardi, but it was found to be too slow. In the implementation, we in particular follow the description of this construction in Proposition 2.2. of [[Schewe, 2009]](#references). In fact, in this work, Schewe describes an even faster construction that builds on the construction of [[Friedgut et al., 2004]](#references). This can easily be adapted to our implementation.
+
+  The theoretical lower bound of $O(0.76n)^n$ for this operation was later achieved by [[Allred and Ultes-Nitsche, 2018]](#references), who describe a construction that is optimal. This construction could also be implemented in a later version of this project.
+
+### Decision procedures
+
+The following procedures are fairly simple to implement (all less than a few lines of code) given the availability of the operations and conversions described above. They all follow observations made in Chapter 3 of [[Khoussainov and Nerode, 2001]](#references).
+
+- `isEmpty : nba -> bool`
+  Checks if the language of the automaton is empty. The implementation follows Theorem 3.9.1 of [[Khoussainov and Nerode, 2001]](#references).
 - `equivalent : nba * nba -> bool`  
+  Checks if two automata are equivalent. The implementation follows Theorem 3.9.2 of [[Khoussainov and Nerode, 2001]](#references).
 - `isUniversal : nba * Sym.sym Set.set -> bool`
+  Checks if the language of the automaton is universal for a given alphabet (i.e., given $\Sigma$, whether the language is $\Sigma^{\omega}$). The implementation follows Theorem 3.9.3 of [[Khoussainov and Nerode, 2001]](#references).
 
 ## References
+
+- [**[Allred and Ultes-Nitsche, 2018]**](https://doi.org/10.1145/3209108.3209138)   
+  J. D. Allred and U. Ultes-Nitsche, "A Simple and Optimal Complementation Algorithm for Büchi Automata," in Proceedings of the 33rd Annual ACM/IEEE Symposium on Logic in Computer Science, Oxford United Kingdom: ACM, Jul. 2018, pp. 46–55. 
 
 - [**[Büchi, 1966]**](https://doi.org/10.1016/S0049-237X(09)70564-6)  
   J. R. Büchi, "Symposium on Decision Problems: On a Decision Method in Restricted Second Order Arithmetic," in Studies in Logic and the Foundations of Mathematics, vol. 44, Elsevier, 1966, pp. 1–11.
